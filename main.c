@@ -6,11 +6,12 @@
  */
 
 
-
 #include <xc.h>
-#include "TAD_TIMER.H"
-#include "TAD_POLS0.h"
-#include "TAD_OUT.h"
+#include "TAD_Timer.h"
+#include "TAD_Pols0.h"
+#include "TAD_Out.h"
+#include "TAD_SIO.h"
+#include "pic18f4321.h"
 
 #pragma config OSC = HS
 #pragma config WDT = OFF
@@ -20,45 +21,55 @@
 static void __interrupt (high_priority) LaRSI (void);
 void main (void);
 
-// Variables del mòdul
-static unsigned char Ences;
-static unsigned char Comptador;
+// Variables locals
+static char HelloW[] = "Hello world!!";
+static char Salt[] = "\r\n";
 
 //Definició de la interrupció d'alta prioritat
 static void __interrupt (high_priority) LaRSI (void){
-    if ( TMR0IF ) TI_RSITimer0();
+    if ( PIR1bits.RCIF&&PIE1bits.RCIE )
+        SIO_InterrupcioRX();
+    if ( PIR1bits.TXIF&&PIE1bits.TXIE )
+        SIO_InterrupcioTX();
+    if ( TMR0IF && TMR0IE )
+        RSI_Timer0();
 }
 
 
 void main(){
 
+    unsigned char ElChar;
+
     // Inicialització dels TADs
     TI_Init();
     POLS0_Init();
+    SIO_Init();
     OUT_Init();
     ei();
-
-    OUT_EncenLed (LED0);
+    SIO_PutString ((unsigned char *)Salt);
+    SIO_PutString ((unsigned char *)HelloW);
+    SIO_PutString ((unsigned char *)Salt);
 
     // Bucle principal
     while(1){
         // Crida als motors
         POLS0_Motor();
         // Lògica relacional entre mòduls estàndard
-        if (POLS0_HiHaPulsacio()) {
-            OUT_7SegmentsPinta ((++Comptador)%10);
-            if (Ences==0) {
-                OUT_EncenLed (LED1);
-                Ences=1;
+        if (SIO_RXAvail()) {
+            OUT_7SegmentsPinta (SIO_RXAvail());
             }
-            else {
-                OUT_ApagaLed (LED1);
-                Ences=0;
+        if (POLS0_HiHaPulsacio()) {
+            if (SIO_RXAvail()) {
+                ElChar = SIO_GetChar();
+                OUT_7SegmentsPinta (SIO_RXAvail());
+                if (SIO_TXAvail()!=0)
+                    SIO_PutChar(ElChar);
             }
         }
     }
 
     // No hi arribarem mai, però és de bona educació :-)
+    SIO_End();
     POLS0_End();
     TI_End();
 }
